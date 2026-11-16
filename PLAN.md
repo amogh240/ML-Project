@@ -4,7 +4,7 @@
 **Notebook & process writeup due:** Nov 19, 2026, midnight (slip days not allowed)
 **Q&A:** Dec 1, 2026
 
-> We record every decision and its reasoning in [DECISIONS.md](DECISIONS.md). This plan refers to those entries by ID, e.g. (D3).
+> We record every decision and its reasoning in [DECISIONS.md](DECISIONS.md). This plan refers to those entries by ID, e.g. (D3). DECISIONS.md is internal and not submitted, so the notebook explains decisions inline and never cites IDs.
 
 ---
 
@@ -51,11 +51,12 @@ Problem statement, why it matters (defensive play-calling), dataset description,
 - Join diagnostics: row counts, matched/unmatched rows from each side, which play types failed to match. Assert no duplicate keys.
 
 ### §2 Cleaning
-- Scrimmage-play filters, with a before/after count for each step (D2).
+- Scrimmage-play filters, with a before/after count for each step (D2). Aborted snaps dropped (D19).
 - Target `is_pass` and the class balance (D1).
-- Missing-value table and how each column is handled (D5).
-- Rare formation/personnel categories merged into "OTHER" (D6).
-- **Leakage audit:** an explicit list of dropped columns with the reason for each. `xpass`/`pass_oe` are excluded as features but kept as a benchmark (D7, D8).
+- **Leakage audit:** a whitelist of pre-snap columns, every excluded column tagged with a reason, and a univariate-AUC scan with an assert (D7, D8, D22).
+- Missing-value table, handled by cause: drop NGS gaps, mark indoor games, parse outdoor weather from text (D20).
+- Category cardinality: rare personnel groupings are handled by parsing into counts and by `OneHotEncoder(min_frequency)` in the Pipeline (D21).
+- ✅ Done Nov 16: 36,539 plays × 38 cols, 61.0% pass.
 
 ### §3 Exploratory data analysis
 Each plot gets a 1–2 line takeaway.
@@ -119,4 +120,4 @@ The course forbids AI tools for the writeup. [DECISIONS.md](DECISIONS.md) holds 
 - [ ] Asserts: join counts, no duplicate (game_id, play_id), no leakage columns in X, train/test weeks disjoint, binary label with ~60% pass
 - [ ] Leakage smell test: >90% accuracy means stop and investigate (expect ~70–80% accuracy, AUC ~0.80–0.85)
 - [ ] Every model beats both baselines; best model compared with `xpass`
-- [ ] Every decision in the notebook links to its DECISIONS.md entry
+- [ ] Every decision in the notebook is explained inline (what, why, alternatives, plan changes), with no D-ID references
