@@ -53,10 +53,10 @@ Problem statement, why it matters (defensive play-calling), dataset description,
 ### §2 Cleaning
 - Scrimmage-play filters, with a before/after count for each step (D2). Aborted snaps dropped (D19).
 - Target `is_pass` and the class balance (D1).
-- **Leakage audit:** a whitelist of pre-snap columns, every excluded column tagged with a reason, and a univariate-AUC scan with an assert (D7, D8, D22).
-- Missing-value table, handled by cause: drop NGS gaps, mark indoor games, parse outdoor weather from text (D20).
-- Category cardinality: rare personnel groupings are handled by parsing into counts and by `OneHotEncoder(min_frequency)` in the Pipeline (D21).
-- ✅ Done Nov 16: 36,539 plays, 61.0% pass. (Nov 17: whitelist roles updated, D23 → 39 columns.)
+- **Leakage audit:** a whitelist of pre-snap columns, every excluded column tagged with a reason, and a univariate-AUC scan with an assert (D7, D8).
+- Missing-value table, handled by cause: drop NGS gaps, mark indoor games, parse outdoor weather from text (D5).
+- Category cardinality: rare personnel groupings are handled by parsing into counts and by `OneHotEncoder(min_frequency)` in the Pipeline (D6).
+- ✅ Done Nov 16: 36,539 plays, 61.0% pass. (Nov 17: whitelist roles updated, D7 → 39 columns.)
 
 ### §3 Exploratory data analysis ✅ Done Nov 17 (training weeks only, D29)
 - Class balance; run/pass counts by down.
@@ -76,10 +76,10 @@ Problem statement, why it matters (defensive play-calling), dataset description,
 
 ### §5 Train/test methodology ✅ Done Nov 17
 - Temporal split weeks 1–14 / 15–18 + playoffs (26,799 / 9,740 plays), disjoint-games assert (D13).
-- 4-fold forward-chaining CV by week (validation weeks 7–8, 9–10, 11–12, 13–14; D34 supersedes the original `GroupKFold`, which leaked validation labels through `team_prior_pass_rate`); Pipeline = median imputer + `OneHotEncoder(min_frequency=0.005)`, no scaler (tree-only, D11).
+- 4-fold forward-chaining CV by week (validation weeks 7–8, 9–10, 11–12, 13–14; D14: replaced the original `GroupKFold`, which leaked validation labels through `team_prior_pass_rate`); Pipeline = median imputer + `OneHotEncoder(min_frequency=0.005)`, no scaler (tree-only, D11).
 - Metrics: ROC-AUC primary; accuracy, F1, precision/recall, run recall, macro F1, confusion matrices (D15). *Log-loss/calibration not done.*
 
-### §6 Modeling ✅ Done Nov 17 (D27, D28 supersede D16/D17)
+### §6 Modeling ✅ Done Nov 17 (D16, D17)
 1. Baselines: majority class (`DummyClassifier`), shotgun rule (D30).
 2. Decision tree: depth validation curve + 60-config grid; depth-3 tree plotted.
 3. Random forest: 12-config randomized search (incl. `class_weight`, D18).
