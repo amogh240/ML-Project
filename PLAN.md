@@ -56,59 +56,53 @@ Problem statement, why it matters (defensive play-calling), dataset description,
 - **Leakage audit:** a whitelist of pre-snap columns, every excluded column tagged with a reason, and a univariate-AUC scan with an assert (D7, D8, D22).
 - Missing-value table, handled by cause: drop NGS gaps, mark indoor games, parse outdoor weather from text (D20).
 - Category cardinality: rare personnel groupings are handled by parsing into counts and by `OneHotEncoder(min_frequency)` in the Pipeline (D21).
-- ✅ Done Nov 16: 36,539 plays × 38 cols, 61.0% pass.
+- ✅ Done Nov 16: 36,539 plays, 61.0% pass. (Nov 17: whitelist roles updated, D23 → 39 columns.)
 
-### §3 Exploratory data analysis
-Each plot gets a 1–2 line takeaway.
-- Class balance overall and by team.
-- Pass rate heatmap: down × distance.
-- Pass rate vs. score differential by quarter; pass rate vs. time remaining.
-- Pass rate by personnel, by formation, by defenders in box; shotgun × pass crosstab.
-- Weather (rain, wind) vs. pass rate.
-- Correlation matrix and collinearity notes.
+### §3 Exploratory data analysis ✅ Done Nov 17 (training weeks only, D29)
+- Class balance; run/pass counts by down.
+- Pass rate by down × yards-to-go bin (grouped bars).
+- Formation (stacked counts + pass rate); pass rate by top-6 offensive personnel; shotgun crosstab.
+- Pass rate by score differential × quarter; pass rate by minutes left in the half.
+- Pass rate by defenders in box; by wind speed vs. indoor.
+- Class-conditional histograms (ydstogo, yardline_100, score_differential, temp); correlation heatmap.
+- *Not done (planned earlier):* class balance by team; rain-specific plot.
 
-### §4 Feature engineering (D9)
-Every feature must be known before the snap. Each group gets a quick check (pass-rate plot or univariate AUC).
-- **Personnel:** parse offense into `n_rb/n_te/n_wr` and defense into `n_dl/n_lb/n_db`. Add `box_minus_blockers`, `light_box`/`heavy_box`.
-- **Formation:** one-hot formation, `shotgun`, `no_huddle`, `shotgun × n_wr`.
-- **Situation:** distance buckets, `log_ydstogo`, `third_or_fourth_and_long`, `red_zone`, `goal_to_go`, `backed_up`.
-- **Game state/clock:** `two_minute_drill`, `trailing_late`, `score_diff × time_remaining`, timeouts, `wp`, `spread_line`.
-- **Weather:** `is_rain`/`is_snow` from the weather string (the proposal idea), `wind`, `temp`, `is_indoor`, roof/surface.
-- **Sequence/tendency:** previous play in the drive (pass? yards?), play number within the drive, team season-to-date pass rate *before* the current game (D10).
-- **Pipeline:** `ColumnTransformer` (one-hot + scaling) inside an sklearn `Pipeline`, so nothing leaks across CV folds (D11).
-- **Ablation:** pbp-only → + participation → + engineered features (D12).
+### §4 Feature engineering ✅ Done Nov 17 (D23–D26; D9/D10 refined)
+- Personnel counts `n_rb/n_te/n_wr/n_ol`, `n_dl/n_lb/n_db`, `box_minus_blockers`.
+- `ydstogo_bin`, `red_zone`, `third_fourth_short/long`, `two_minute`, `trailing_late`, `is_home`, offense-relative `posteam_spread`, `is_rain`.
+- `prev_play`, `drive_play_number`, `team_prior_pass_rate` (chronology asserted, ordered by `order_sequence`).
+- Nested feature sets A (situation) ⊂ B (+ alignment/personnel) ⊂ C (+ engineered); leakage asserts on the final list.
+- *Not done:* `light_box/heavy_box`, `log_ydstogo`, `backed_up`, interaction terms (trees handle interactions); `is_snow` built but unusable (all zeros in training).
 
-### §5 Train/test methodology
-- Temporal split: train on weeks 1–14, test on weeks 15–18 + playoffs (D13).
-- `GroupKFold` by `game_id` (5 folds) inside the training set (D14).
-- Metrics: ROC-AUC is primary. Also accuracy, log-loss, F1, precision/recall, confusion matrix (D15).
+### §5 Train/test methodology ✅ Done Nov 17
+- Temporal split weeks 1–14 / 15–18 + playoffs (26,799 / 9,740 plays), disjoint-games assert (D13).
+- 4-fold forward-chaining CV by week (validation weeks 7–8, 9–10, 11–12, 13–14; D34 supersedes the original `GroupKFold`, which leaked validation labels through `team_prior_pass_rate`); Pipeline = median imputer + `OneHotEncoder(min_frequency=0.005)`, no scaler (tree-only, D11).
+- Metrics: ROC-AUC primary; accuracy, F1, precision/recall, run recall, macro F1, confusion matrices (D15). *Log-loss/calibration not done.*
 
-### §6 Modeling (D16)
-1. Baselines: always-pass; shotgun → pass.
-2. Logistic regression (tune C, L1/L2).
-3. Decision tree (tune depth, min leaf, criterion). Plot a shallow tree.
-4. KNN (tune k). Optional.
-5. Random forest.
-6. Gradient boosting (XGBoost / HistGradientBoosting) with early stopping.
-7. MLP. Optional.
-8. Ensembles: soft voting and stacking.
-- Tuning: RandomizedSearchCV/GridSearchCV with GroupKFold, scored on AUC. Validation curves and a learning curve (D17).
-- Class weights and decision-threshold check (D18).
+### §6 Modeling ✅ Done Nov 17 (D27, D28 supersede D16/D17)
+1. Baselines: majority class (`DummyClassifier`), shotgun rule (D30).
+2. Decision tree: depth validation curve + 60-config grid; depth-3 tree plotted.
+3. Random forest: 12-config randomized search (incl. `class_weight`, D18).
+4. AdaBoost: 18-config grid (base depth, n_estimators, learning rate).
+5. Tuning summary + selection by CV AUC → AdaBoost (0.8267), effectively indistinguishable from the random forest (0.8265) (D31).
+6. Feature-set ablation A/B/C, C − sequence, C + `wp`, CV only (D12, D26, D35).
+- *Dropped:* logistic regression, KNN, gradient boosting, MLP, voting/stacking; learning curve; threshold tuning.
 
-### §7 Results and analysis
-- Comparison table (CV AUC ± std, test metrics) and bar chart; overlaid ROC curves; calibration curve.
-- **Benchmark vs. nflverse `xpass`** on the same test plays (D8).
-- Permutation importance, SHAP (GBM), LR coefficients.
-- Error analysis by down, quarter, distance, formation, team; review the most confident misses.
-- Ablation results; conclusions and limitations.
+### §7 Results and analysis ✅ Done Nov 17
+- Test comparison table (with CV AUC column and Δ accuracy vs. majority) and bar charts; confusion matrices; ROC curves.
+- `xpass` benchmark on the same test plays (D8).
+- Permutation importance (test set, selected model).
+- Error analysis by down, yards-to-go, quarter, formation; down × distance error shares; most confident misses.
+- Sensitivity: nullified plays (CV for the training choice; test only as a subgroup view of the final model) (D32, D35).
+- *Not done:* calibration curve, SHAP, error analysis by team.
 
 ## 5. Schedule
 
 | Day | Date | Work |
 |---|---|---|
 | 1 | Nov 16–17 | Setup, download, merge, cleaning, leakage audit, EDA |
-| 2 | Nov 17–18 | Feature engineering, split/CV, baselines, LR/tree/RF/GBM + tuning |
-| 3 | Nov 18–19 | Ensembles, ablation, xpass benchmark, error analysis, polish. **Team writes the PDF writeup** |
+| 2 | Nov 17 | ✅ EDA, feature engineering, split/CV, baselines, tree/RF/AdaBoost + tuning, ablation, xpass benchmark, error analysis (notebook complete) |
+| 3 | Nov 18–19 | Team reviews the notebook and DECISIONS.md, prepares for Q&A. **Team writes the PDF writeup** |
 
 ## 6. Process writeup (team-written, no AI)
 
@@ -116,8 +110,8 @@ The course forbids AI tools for the writeup. [DECISIONS.md](DECISIONS.md) holds 
 
 ## 7. Verification checklist
 
-- [ ] `pip install -r requirements.txt` → Restart & Run All in a fresh kernel, with no errors
-- [ ] Asserts: join counts, no duplicate (game_id, play_id), no leakage columns in X, train/test weeks disjoint, binary label with ~60% pass
-- [ ] Leakage smell test: >90% accuracy means stop and investigate (expect ~70–80% accuracy, AUC ~0.80–0.85)
-- [ ] Every model beats both baselines; best model compared with `xpass`
-- [ ] Every decision in the notebook is explained inline (what, why, alternatives, plan changes), with no D-ID references
+- [x] `pip install -r requirements.txt` → Restart & Run All in a fresh kernel, with no errors (Nov 17: fresh uv venv + nbclient, two consecutive runs gave identical outputs; Nov 18: re-run after the CV/test-set audit, D34–D35)
+- [x] Asserts: join counts, no duplicate (game_id, play_id), no leakage columns in X, train/test weeks disjoint, binary label with ~60% pass, valid prediction probabilities
+- [x] Leakage smell test: >90% accuracy means stop and investigate (expect ~70–80% accuracy, AUC ~0.80–0.85) → test accuracy 74–75%, AUC 0.81–0.83
+- [x] Every model beats both baselines; best model compared with `xpass` (0.831 vs. 0.789 test AUC)
+- [x] Every decision in the notebook is explained inline, briefly (the detailed rationale belongs in the team's writeup), with no D-ID references
