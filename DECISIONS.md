@@ -40,7 +40,7 @@ Status values: **Decided** · **Tentative** (revisit once we see data/results). 
 - **Why:** Special-teams plays are almost perfectly predictable from down and formation (4th down plus a punt formation means a punt). Including them inflates accuracy without showing that the model learned anything. Kneels and spikes are clock management, not strategic play calls. The interesting and realistic question is run vs. pass.
 - **Alternatives:** keep everything (the proposal's version); keep it and add a run-vs-pass sub-analysis.
 - **Result (Nov 16):** 49,434 merged rows → 36,870 with a pass/rush flag → drop 128 flagged 2-pt tries → drop 13 more 2-pt tries that were wiped out by a penalty (these have no `down` and no `two_point_attempt` flag; a notebook assert caught them) → 36,729. The 1,423 penalty-nullified plays with a known call are kept (D1). The 959 QB scrambles (play_type "run") are labeled pass (D1). Final pass rate after all cleaning: **61.0%** (REG 60.9%, POST 63.9%).
-- **Note (Nov 17):** a fresh download of the nflverse files gives 1,426 kept `no_play` rows (not 1,423) and slightly different `play_type` counts among dropped rows. nflverse re-publishes the files. Every row count in the cleaning pipeline is unchanged (36,539 final plays). See D33.
+- **Note (Nov 17):** a fresh download of the nflverse files gives 1,426 kept `no_play` rows (not 1,423) and slightly different `play_type` counts among dropped rows. nflverse re-publishes the files. Every row count in the cleaning pipeline is unchanged (36,539 final plays). The cached `data/` files used for the final notebook runs give 1,423. See D33.
 
 ## Data acquisition and merging
 
@@ -114,11 +114,11 @@ Status values: **Decided** · **Tentative** (revisit once we see data/results). 
 ### D9: Engineered features (all known before the snap)
 - **Status:** Decided (revised Nov 17)
 - **Decision (as built, §4.1–4.5):** personnel counts `n_rb, n_te, n_wr, n_ol` (OL absent from string → 5) and `n_dl, n_lb, n_db`; `box_minus_blockers = defenders_in_box − (n_ol + n_te)`; `ydstogo_bin` (1–2 / 3–6 / 7–10 / 11+, one-hot); `red_zone` (≤ 20 yards); `third_fourth_short` (down ≥ 3, ≤ 2 yards); `third_fourth_long` (down ≥ 3, ≥ 7 yards); `two_minute` (≤ 120 s left in half); `trailing_late` (behind with ≤ 900 game seconds left); `is_home`; `posteam_spread` (D26); `is_rain` (outdoor/open games, "rain|shower" in the weather text); the sequence features from D10.
-- **Final set C:** 37 numeric + 4 categorical = 41 input columns → 72 after one-hot encoding.
+- **Final set C:** 36 numeric + 5 categorical (`offense_formation`, `offense_personnel`, `defense_personnel`, `ydstogo_bin`, `prev_play`) = 41 input columns → 72 after one-hot encoding.
 - **Why:** Personnel strings like "1 RB, 2 TE, 2 WR" are useless to a model as raw text but very informative as counts. Football knowledge says passing is more likely with more WRs, a lighter box, long distance, trailing late, and the two-minute drill, so explicit flags make those patterns easy to learn. Rain/no-rain follows the proposal's plan to keep the weather columns few.
 - **Excluded on purpose:** raw `spread_line` (wrong perspective, D26); `posteam_type`, `roof`, raw `weather` text (each replaced by a flag); `surface` (no clear football reason); team identities (would memorize teams; tendency is carried by `team_prior_pass_rate`); `wp` (D26).
 - **Personnel parsing observed:** 35,249 offensive strings have 5 RB+TE+WR; 1,165 have 4 (e.g. a 2-QB or defender-on-offense look). On defense, 36,489 strings sum to 11, 36 to 10 and 14 to 12. Irregular positions are ignored, not dropped.
-- **Univariate AUC on training weeks (not used for selection):** `n_db` 0.649, `box_minus_blockers` 0.644, `n_wr` 0.637 … `is_rain` 0.504, `posteam_spread` 0.501.
+- **Univariate AUC on training weeks (not used for selection; table removed from the notebook in the trim pass):** `n_db` 0.649, `box_minus_blockers` 0.644, `n_wr` 0.637 … `is_rain` 0.504, `posteam_spread` 0.501.
 - **How it evolved:**
   1. **Nov 16, plan:** personnel counts parsed from strings; box-vs-blockers; formation one-hots; down/distance buckets and flags; clock/score flags (two-minute drill, trailing late); weather (rain/snow parsed, wind, temp, indoor); interactions (`shotgun × n_wr`, `score_diff × time_remaining`).
   2. **Nov 17, as built:** mostly as planned, with three differences. The two interaction terms were not built, because the lineup at the time was all trees (D16), which find interactions themselves. `is_snow` was built but not used: the only snow game (2022_20_CIN_BUF) is a playoff game in the test weeks, so the flag is all zeros in training (an assert in §5 documented this). `spread_line` was converted to the offense's perspective, and `wp` was left out (D26).
@@ -158,7 +158,7 @@ Status values: **Decided** · **Tentative** (revisit once we see data/results). 
 - **Earlier result (Nov 17, GroupKFold CV, see D14):** CV AUC A 0.777 → B 0.823 → C 0.827; test AUC A 0.785 → B 0.826 → C 0.831. Participation merge = +0.046 CV AUC (+4.5 pts CV accuracy); engineered features = +0.004 CV AUC, most of it from sequence/tendency (C without them: 0.824). The test-set scores were removed under D35.
 
 ### D26: Offense-relative spread and exclusion of `wp`
-- **Status:** Decided, implemented (§4.2, §6.6)
+- **Status:** Decided, implemented (§4.2). The C + `wp` comparison was dropped from the notebook in the trim pass; its result is kept below.
 - **Finding:** `spread_line` is the home team's expected margin. Over all plays, raw `spread_line` has correlation 0.00 with the offense's score differential; `posteam_spread = spread_line if home else −spread_line` has +0.31 (the flipped sign would give −0.31). An assert (> 0.2) guards the sign. (A first attempt checked the sign against `wp` on each game's first play and got only +0.29, so we switched to the score check.)
 - **Decision on `wp`:** keep it out of the main set. It is a pre-snap nflverse model output, nearly redundant with `score_differential` (r = 0.92 in training weeks), and including it would make our model partly a wrapper around nflverse's model.
 - **Result (Nov 18, forward-chaining CV):** C + `wp`: CV AUC 0.8270 vs. 0.8267 without. Negligible, so the exclusion costs nothing.
@@ -192,7 +192,7 @@ Status values: **Decided** · **Tentative** (revisit once we see data/results). 
 - **Decision:** Tune and compare on ROC-AUC. Also report accuracy, log-loss, F1, precision/recall, and confusion matrices.
 - **Why:** The classes are imbalanced (~60/40), so accuracy alone flatters "always pass." AUC measures ranking quality across all thresholds, and log-loss/calibration matter if the output is used as a probability (as `xpass` is).
 - **Implemented (Nov 17):** positive class = pass. CV tracks AUC, accuracy, F1; test reports accuracy, precision/recall/F1 for pass, recall for run, macro F1, ROC-AUC (from probabilities), confusion matrices. Log-loss and calibration curves were **not** done (time; not required).
-- **Trim pass:** §5.2 of the notebook now has a table defining every metric (ROC curve vs. ROC-AUC, accuracy, precision/recall, F1, macro F1) and the CV columns (CV mean, CV AUC std, train-fold AUC), at the team's request.
+- **Trim pass:** a table defining every metric was added to §5.2, then cut back to one line (main metric ROC-AUC, plus accuracy/precision/recall/F1 with pass positive) when the team asked for a shorter notebook. Metric definitions for the Q&A: ROC curve = true positive rate vs. false positive rate across all cutoffs; ROC-AUC = area under it = chance a random pass outscores a random run; CV ___ = mean over the 4 validation folds; CV AUC std = fold-to-fold spread; train-fold AUC far above CV AUC = overfitting.
 
 ### D29: EDA restricted to training weeks
 - **Status:** Decided, implemented (§3)
@@ -202,8 +202,8 @@ Status values: **Decided** · **Tentative** (revisit once we see data/results). 
 ### D35: Test set used only for final evaluation (audit)
 - **Status:** Decided, implemented (Nov 18 audit)
 - **Issue found:** the Nov 17 notebook (§7.6) refit the selected model on each ablation feature set and on training-without-nullified-plays, and scored those **alternative models on the test set**. They were not used for selection, but this is model-development information computed on the final test set. The §7.3 text also cited set A's test AUC.
-- **Decision:** feature-set comparisons and the nullified-play training choice are now CV-only (training weeks). The test set is scored only for the three final tuned models and the two baselines, plus subgroup views of the final model (error analysis, nullified subset, permutation importance) that change nothing.
-- **Also confirmed:** model selection (§6.5) uses `best_score_` from the searches; no §6 cell reads `X_test`/`y_test`.
+- **Decision:** feature-set comparisons (§6.7) and the nullified-play training choice are CV-only (training weeks). The test set is scored only for the final tuned models (four since the trim pass) and the two baselines, plus views of the final model that change nothing (confusion matrices, `xpass` comparison, permutation importance, error analysis). The nullified-subset view was removed in the trim pass.
+- **Also confirmed:** model selection (§6.6) uses `best_score_` from the searches; no §6 cell reads `X_test`/`y_test`.
 - **Wording:** removed "statistically tied" claims (notebook and D31). No significance tests were run; differences are compared to the fold standard deviation only.
 
 ## Modeling
@@ -236,20 +236,22 @@ Status values: **Decided** · **Tentative** (revisit once we see data/results). 
 - **Decision:** Compare `class_weight="balanced"` with no weighting, and tune the decision threshold against the default 0.5.
 - **Why:** The imbalance is mild (~60/40), so we expect little change, but we'll check rather than assume.
 - **What was actually done:** `class_weight` ∈ {None, "balanced"} is part of the random-forest search (D17). Threshold tuning was **not** done; all label metrics use 0.5.
-- **Result (Nov 18, forward-chaining CV):** the RF search selects `class_weight="balanced"` (CV AUC 0.8265 vs. 0.8260 for the best unweighted config). Balanced weighting lowers CV accuracy at threshold 0.5 (0.738 vs. 0.750) and on test gives run recall 0.81 / pass recall 0.69.
+- **Result (Nov 18, forward-chaining CV):** the RF search selects `class_weight="balanced"` (CV AUC 0.8265 vs. 0.8260 for the best unweighted config). Balanced weighting lowers CV accuracy at threshold 0.5 (0.738 vs. 0.750) and on test gives run recall 0.81 / pass recall 0.69 (trim-pass run: 0.82 / 0.69).
 - **Earlier result (Nov 17, GroupKFold CV, see D14):** In the RF search the best unweighted and best balanced configurations tie on CV AUC (0.8273 vs. 0.8272). In an earlier run (before `is_snow` was removed, D9) the balanced one won by a similar margin. Weighting does not change ranking quality (AUC); at threshold 0.5 it shifts predictions toward "run" (earlier run: test run recall 0.82 / pass recall 0.69 vs. final 0.63 / 0.83, similar accuracy). The majority-class pass share (61%) is mild, so we kept AUC as the selection metric and did not tune the threshold.
 
 ### D30: Baselines (professor requirement)
 - **Status:** Decided, implemented (§6.1, §7.1)
 - **Result:** majority class = pass (61.4% of training plays). Majority baseline: CV accuracy 0.607 (validation weeks 7–14; 0.615 under GroupKFold), test accuracy 0.599, test pass-F1 0.749, run recall 0, AUC 0.5; test confusion matrix = all 9,740 plays predicted pass (3,904 runs wrong). Shotgun rule (pass iff shotgun): test accuracy 0.712, AUC 0.679.
 - **Every trained model beats both:** +14.0 (tree), +14.3 (RF), +14.9 (AdaBoost) test-accuracy points over the majority baseline (Nov 18). [Nov 17: +14.1, +15.0, +14.9]
+- **Trim-pass run:** logistic regression +14.4 (74.3%), tree +14.0, RF +14.4 (74.3%, test AUC 0.831), AdaBoost +14.9. The RF moved by 0.1 point from the Nov 18 run with the same seed, which is minor run-to-run variation (the environment was the global Python, not the pinned `.venv`). All CV numbers matched exactly.
 
 ### D31: Final model selection
-- **Status:** Decided (§6.5)
-- **Decision:** pre-declared rule: highest CV ROC-AUC. `best_name = max(searches, key=best_score_)` in §6.5 uses only CV scores; no test data is touched before §7 (checked Nov 18).
+- **Status:** Decided (§6.6)
+- **Decision:** pre-declared rule: highest CV ROC-AUC. `best_name = max(searches, key=best_score_)` in §6.6 uses only CV scores; no test data is touched before §7 (checked Nov 18).
 - **Result (Nov 18, forward-chaining CV):** **AdaBoost** 0.8267 vs. random forest 0.8265 and decision tree 0.8117. After logistic regression was added (trim pass) it scored 0.8184, so the selection is unchanged.
 - **Caveat:** the AdaBoost–RF margin (0.0002) is far below the fold standard deviation (~0.004), and the order flipped between CV schemes (Nov 17 GroupKFold: RF 0.8273 vs. AdaBoost 0.8270). No significance test was run; we treat the two as indistinguishable and keep the rule rather than choose after seeing test scores.
-- **Test result (Nov 18):** AdaBoost accuracy 0.748, pass precision 0.781 / recall 0.806, run recall 0.661, ROC-AUC 0.828. RF 0.742 / AUC 0.831; tree 0.739 / AUC 0.810. CV → test AUC differences ≤ 0.005.
+- **Test result (Nov 18):** AdaBoost accuracy 0.748, pass precision 0.781 / recall 0.806, run recall 0.661, ROC-AUC 0.828. RF 0.742 / AUC 0.831; tree 0.739 / AUC 0.810.
+- **Test result (trim-pass run, current notebook):** AdaBoost unchanged (0.748 / 0.828); RF 0.743 / 0.831; tree 0.739 / 0.810; logistic regression 0.743 / 0.818. CV → test AUC differences ≤ 0.005.
 - **Earlier result (Nov 17, GroupKFold CV, see D14):** RF selected; RF test accuracy 0.749 / AUC 0.831.
 
 ### D32: Penalty-nullified plays: sensitivity check
@@ -264,6 +266,7 @@ Status values: **Decided** · **Tentative** (revisit once we see data/results). 
 - **Decision:** project-local `.venv` (gitignored) created with `uv` on Python 3.11. `requirements.txt` now pins the verified versions (pandas 3.1.1, pyarrow 26.0.1, numpy 2.4.6, scikit-learn 1.9.1, matplotlib 3.11.2, jupyter 1.1.1). `seaborn` was removed (never imported).
 - **Observed:** with pandas 3 the existing §0–§2 code ran unchanged and gave the same 36,539 rows; only displayed missing values changed (`None` → `NaN`). The freshly downloaded nflverse files differ slightly from the Nov 16 download (D2 note). sklearn 1.9 no longer accepts `color=` in `RocCurveDisplay.from_predictions`, so §7.3 plots ROC curves with `roc_curve` + matplotlib.
 - **Verification:** the full notebook runs top to bottom with `nbclient` in a fresh kernel (~6–7 min); random seeds are fixed (`RANDOM_STATE = 363`). Re-verified Nov 18 after the D14 and D35 changes.
+- **Trim pass:** the `.venv` was no longer present, so the final runs used the global Python 3.11 (pandas 2.3.3, numpy 1.26.4, scikit-learn 1.9.1, pyarrow 20.0.0, matplotlib 3.11.1) via `jupyter nbconvert --execute`. All CV numbers matched the earlier pandas-3 runs exactly; the RF test accuracy moved by 0.1 point (D30). Runtime ~7 min idle, up to ~25 min on a busy machine; one run hung in a parallel (joblib) search and was simply re-run. Markdown and code comments were trimmed after the last execution (no code logic changed).
 
 ---
 

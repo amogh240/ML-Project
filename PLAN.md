@@ -59,41 +59,41 @@ Problem statement, why it matters (defensive play-calling), dataset description,
 - ✅ Done Nov 16: 36,539 plays, 61.0% pass. (Nov 17: whitelist roles updated, D7 → 39 columns.)
 
 ### §3 Exploratory data analysis ✅ Done Nov 17 (training weeks only, D29)
-- Class balance; run/pass counts by down.
-- Pass rate by down × yards-to-go bin (grouped bars).
-- Formation (stacked counts + pass rate); pass rate by top-6 offensive personnel; shotgun crosstab.
+- Class balance + pass rate by down × yards-to-go bin.
+- Formation (stacked counts + pass rate); pass rate by top-6 offensive personnel.
 - Pass rate by score differential × quarter; pass rate by minutes left in the half.
 - Pass rate by defenders in box; by wind speed vs. indoor.
-- Class-conditional histograms (ydstogo, yardline_100, score_differential, temp); correlation heatmap.
-- *Not done (planned earlier):* class balance by team; rain-specific plot.
+- Correlation heatmap + most-correlated pairs.
+- *Cut in the trim pass:* run/pass counts by down, shotgun crosstab, class-conditional histograms. *Not done:* class balance by team; rain-specific plot.
 
-### §4 Feature engineering ✅ Done Nov 17 (D23–D26; D9/D10 refined)
+### §4 Feature engineering ✅ Done Nov 17 (D9, D10, D26)
 - Personnel counts `n_rb/n_te/n_wr/n_ol`, `n_dl/n_lb/n_db`, `box_minus_blockers`.
 - `ydstogo_bin`, `red_zone`, `third_fourth_short/long`, `two_minute`, `trailing_late`, `is_home`, offense-relative `posteam_spread`, `is_rain`.
 - `prev_play`, `drive_play_number`, `team_prior_pass_rate` (chronology asserted, ordered by `order_sequence`).
 - Nested feature sets A (situation) ⊂ B (+ alignment/personnel) ⊂ C (+ engineered); leakage asserts on the final list.
-- *Not done:* `light_box/heavy_box`, `log_ydstogo`, `backed_up`, interaction terms (trees handle interactions); `is_snow` built but unusable (all zeros in training).
+- *Not done:* `light_box/heavy_box`, `log_ydstogo`, `backed_up`, interaction terms; `is_snow` (removed: all zeros in training).
 
 ### §5 Train/test methodology ✅ Done Nov 17
 - Temporal split weeks 1–14 / 15–18 + playoffs (26,799 / 9,740 plays), disjoint-games assert (D13).
-- 4-fold forward-chaining CV by week (validation weeks 7–8, 9–10, 11–12, 13–14; D14: replaced the original `GroupKFold`, which leaked validation labels through `team_prior_pass_rate`); Pipeline = median imputer + `OneHotEncoder(min_frequency=0.005)`, no scaler (tree-only, D11).
+- 4-fold forward-chaining CV by week (validation weeks 7–8, 9–10, 11–12, 13–14; D14: replaced the original `GroupKFold`, which leaked validation labels through `team_prior_pass_rate`); Pipeline = median imputer + `OneHotEncoder(min_frequency=0.005)`, plus a `StandardScaler` for logistic regression only (D11).
 - Metrics: ROC-AUC primary; accuracy, F1, precision/recall, run recall, macro F1, confusion matrices (D15). *Log-loss/calibration not done.*
 
-### §6 Modeling ✅ Done Nov 17 (D16, D17)
+### §6 Modeling ✅ Done Nov 17; logistic regression added in the trim pass (D16, D17)
 1. Baselines: majority class (`DummyClassifier`), shotgun rule (D30).
-2. Decision tree: depth validation curve + 60-config grid; depth-3 tree plotted.
-3. Random forest: 12-config randomized search (incl. `class_weight`, D18).
-4. AdaBoost: 18-config grid (base depth, n_estimators, learning rate).
-5. Tuning summary + selection by CV AUC → AdaBoost (0.8267), effectively indistinguishable from the random forest (0.8265) (D31).
-6. Feature-set ablation A/B/C, C − sequence, C + `wp`, CV only (D12, D26, D35).
-- *Dropped:* logistic regression, KNN, gradient boosting, MLP, voting/stacking; learning curve; threshold tuning.
+2. Logistic regression: 10-config grid (C × L1/L2); coefficient plot.
+3. Decision tree: depth validation curve + 60-config grid; depth-3 tree plotted.
+4. Random forest: 12-config randomized search (incl. `class_weight`, D18).
+5. AdaBoost: 18-config grid (base depth, n_estimators, learning rate).
+6. Comparison + selection by CV AUC → AdaBoost (0.8267), effectively tied with the random forest (0.8265); logistic regression 0.818 (D31).
+7. Feature-set ablation A/B/C for logistic regression and AdaBoost, CV only (D12, D35).
+- *Dropped:* KNN, gradient boosting, MLP, voting/stacking; learning curve; threshold tuning; ablation variants (C − sequence, C + `wp`).
 
 ### §7 Results and analysis ✅ Done Nov 17
-- Test comparison table (with CV AUC column and Δ accuracy vs. majority) and bar charts; confusion matrices; ROC curves.
+- Test comparison table (with CV AUC column and Δ accuracy vs. majority); confusion matrices; ROC curves.
 - `xpass` benchmark on the same test plays (D8).
 - Permutation importance (test set, selected model).
 - Error analysis by down, yards-to-go, quarter, formation; down × distance error shares; most confident misses.
-- Sensitivity: nullified plays (CV for the training choice; test only as a subgroup view of the final model) (D32, D35).
+- *Cut in the trim pass:* results bar chart; nullified-play sensitivity check (results kept in D32).
 - *Not done:* calibration curve, SHAP, error analysis by team.
 
 ## 5. Schedule
@@ -110,8 +110,8 @@ The course forbids AI tools for the writeup. [DECISIONS.md](DECISIONS.md) holds 
 
 ## 7. Verification checklist
 
-- [x] `pip install -r requirements.txt` → Restart & Run All in a fresh kernel, with no errors (Nov 17: fresh uv venv + nbclient, two consecutive runs gave identical outputs; Nov 18: re-run after the CV/test-set audit, D34–D35)
+- [x] `pip install -r requirements.txt` → Restart & Run All in a fresh kernel, with no errors (Nov 17: fresh uv venv + nbclient, two consecutive runs gave identical outputs; Nov 18: re-run after the CV/test-set audit, D14/D35; trim pass: re-run with logistic regression, global Python 3.11, D33)
 - [x] Asserts: join counts, no duplicate (game_id, play_id), no leakage columns in X, train/test weeks disjoint, binary label with ~60% pass, valid prediction probabilities
 - [x] Leakage smell test: >90% accuracy means stop and investigate (expect ~70–80% accuracy, AUC ~0.80–0.85) → test accuracy 74–75%, AUC 0.81–0.83
-- [x] Every model beats both baselines; best model compared with `xpass` (0.831 vs. 0.789 test AUC)
+- [x] Every model beats both baselines; best model compared with `xpass` (AdaBoost 0.828 vs. 0.789 test AUC)
 - [x] Every decision in the notebook is explained inline, briefly (the detailed rationale belongs in the team's writeup), with no D-ID references
